@@ -1,0 +1,891 @@
+# CRM Opportunity Module — Implementation-Ready UI Spec
+
+> Target stack: React (with a component library like Material UI, Radix, or Chakra), TypeScript recommended, REST API primary (GraphQL optional), responsive (desktop + mobile), accessible (WCAG 2.1 AA).
+
+---
+
+## 1) High-level User Flows
+
+### A. Sales Rep
+
+1. **Create Opportunity**
+
+   1. Click **New Opportunity**.
+   2. Fill: `name`, `account`, `primaryContact`, `amount`, `currency`, `stage` (defaults to *Qualification*), `closeDate`, `probability` (auto from stage but editable if allowed), `leadSource`, optional `products`, `tags`, `customFields`.
+   3. Save → success toast “Opportunity created” → redirect to **Opportunity Details**.
+2. **Progress Stage**
+
+   1. On Details, click next stage in **Stage Timeline** or **Update Stage**.
+   2. If stage has **entry criteria** (e.g., amount > 0, contact set), validate; if failing, inline error.
+   3. Optionally log an **Activity** (call/email/meeting) and add **Notes**.
+3. **Edit & Collaborate**
+
+   1. Inline edit fields (amount, probability, closeDate) or open **Edit** modal.
+   2. Add **attachments** (drag/drop), @mention teammates in **Notes**.
+   3. Change owner (if permissions) → confirmation dialog.
+4. **Close**
+
+   1. Click **Close as Won/Lost**.
+   2. Provide mandatory fields: `closeDate`, `closedReason` (for Lost), `wonAmount` (defaults to `amount`).
+   3. Save → status chip updates; activity logged automatically.
+
+### B. Sales Manager
+
+1. **Review Pipeline**
+
+   1. Open **Dashboard** → pipeline by stage, forecast vs quota, leaderboards.
+   2. Filter by team, owner, region, quarter.
+2. **Bulk Actions**
+
+   1. In **Opportunity List**, multi-select → **Change Owner**, **Change Stage**, **Close Lost**, **Export**.
+3. **Coaching**
+
+   1. Drill from dashboard chart → filtered list → open Details → review **History/Audit** tab and **Activities**.
+
+### C. CRM Administrator
+
+1. **Configure**
+
+   1. Manage **Stages** (names, order, default probability).
+   2. Manage **Custom Fields** (field type, required, visibility by role).
+   3. Set **role permissions** and **data access rules**.
+2. **Data Ops**
+
+   1. Import CSV → mapping step → validate → bulk create/update.
+   2. Export CSV with selected columns & filters.
+
+---
+
+## 2) Screen-by-Screen Specifications
+
+### 2.1 Create Opportunity (Modal or Full Page)
+
+**Layout (desktop ≥1024px)**
+
+* Two-column form, 12-column grid (gap 24px).
+  Left (8 cols): Core details. Right (4 cols): Dates & metadata.
+  **Tablet 768–1023px**: single column with grouped sections.
+  **Mobile <768px**: single column, sticky header with **Cancel/Save**.
+
+**Fields**
+
+* `name` (Text, required, max 150). Placeholder: “Q4 Renewal – Acme Corp”.
+* `accountId` (Autocomplete select, required). Supports create-account quick add.
+* `primaryContactId` (Autocomplete select, optional, filtered by account).
+* `ownerId` (Autocomplete select, default current user; editable by Manager/Admin).
+* `stage` (Select, required, default `qualification`).
+* `probability` (Number 0–100, %; defaults from stage; editable by Manager).
+* `amount` (Number ≥ 0 with 2 decimals, currency-aware).
+* `currency` (Select ISO 4217; default user’s org currency).
+* `expectedCloseDate` (Date picker, >= today).
+* `leadSource` (Select: Web, Referral, Inbound, Outbound, Event, Other).
+* `products[]` (Repeater rows: productId, qty, unitPrice; amount auto-sums).
+* `tags[]` (Multi-select, creatable).
+* `description` (Multiline text, 1,000 chars).
+* `customFields` (dynamic; types: text, number, select, checkbox, date).
+* Hidden/auto: `createdBy`, `createdAt` (server), `auditId`.
+
+**Validation**
+
+* Required: `name`, `accountId`, `stage`, `expectedCloseDate`.
+* Rules:
+
+  * `name`: 3–150 chars.
+  * `expectedCloseDate`: must be ≥ today.
+  * `probability`: integer 0–100.
+  * `amount`: numeric, ≥ 0.
+* Example Error Messages:
+
+  * “Name is required and must be 3–150 characters.”
+  * “Expected close date cannot be in the past.”
+  * “Probability must be between 0 and 100.”
+
+**Actions**
+
+* **Save** (primary). **Save & Create Another** (secondary).
+* **Cancel** (dismiss; confirm if dirty).
+
+### 2.2 Opportunity Details / View
+
+**Layout**
+
+* Header bar: **Name** + Status Chip (Open / Won / Lost) + Stage Timeline.
+* Actions: **Edit**, **Change Stage**, **Change Owner**, **Add Activity**, **Attach File**, overflow (**Close as Won/Lost**, **Delete**).
+* Tabs: **Overview** (default), **Products**, **Activities**, **Notes**, **Attachments**, **History**.
+
+**Overview (key fields)**
+
+* Left: Account & Contacts card; Amount/Probability; Close date; Lead Source; Tags.
+* Right: **Next Step** (free text), **Upcoming Activities**, **Recent Emails/Calls**.
+
+**Components/Behaviors**
+
+* **Stage Timeline**: horizontally scrollable on mobile; each stage clickable → stage change modal (with checklist/criteria display).
+* **Inline Edit**: amount, probability, close date; saves on blur or Enter; ESC to cancel.
+* **Notes**: rich text, @mentions, #tags; emoji optional; edit/delete with 15-min grace (versioned in History).
+* **Attachments**: drag/drop or browse; file types: pdf, docx, xlsx, png, jpg; max size (configurable; e.g., 25 MB).
+* **History**: audit log of field changes (field, old, new, who, when, API/UI source).
+
+**Empty States**
+
+* “No activities yet — log your first call” (CTA button).
+* “No products — add products to improve forecast accuracy.”
+
+### 2.3 Opportunity List / Grid
+
+**Layout**
+
+* Toolbar: Search box (name/account/contact), Filters, Columns, Bulk actions, Import, Export, **New Opportunity**.
+* Filters: Owner, Team, Stage, Close date range, Amount range, Lead Source, Tags, Currency, Created date.
+* Table columns (configurable): Name, Account, Amount, Probability, Stage (chip), Owner, Close Date, Age (days), Updated At.
+* Pagination: page size 25/50/100; infinite scroll option for mobile.
+* Row interactions: click → Details; checkbox → multi-select; hover actions → Edit, Quick Stage, Close Won/Lost.
+
+**Validation & Messages**
+
+* When bulk actions applied with no rows: “Select at least one opportunity.”
+* Conflict: show per-row failure reason (e.g., permissions).
+
+### 2.4 Opportunity Edit (Modal/Page)
+
+* Same fields as Create.
+* Show **Last updated by X on YYYY-MM-DD hh\:mm**.
+* Dirty-check; display field-level validation as in Create.
+* Keyboard: Ctrl/Cmd+S to save.
+
+### 2.5 Bulk Actions
+
+* **Change Stage** (requires uniform validation; rows failing criteria are skipped and reported).
+* **Change Owner** (requires permission).
+* **Close Lost (reason)** / **Close Won** (wonAmount optional).
+* **Tag/Untag**, **Export**.
+* Result dialog: success count / failure count with downloadable error CSV.
+
+### 2.6 Import / Export
+
+* **Import (CSV)** flow:
+
+  1. Upload CSV → file validation (size, columns).
+  2. Mapping screen: map CSV headers → fields (with type hints).
+  3. Preview 20 rows with detected issues.
+  4. Options: “Create only”, “Update by ExternalId”, “Upsert”.
+  5. Run → progress bar → results + downloadable error report.
+* **Export**: current filter set; choose columns; CSV/Excel.
+
+### 2.7 Dashboard
+
+* **KPI Cards**: Pipeline Value, # Opps by Stage, Win Rate, Avg Deal Size, Forecast vs Quota (period).
+* **Charts**:
+
+  * Funnel (stage pipeline).
+  * Time-series (pipeline trend or created vs closed).
+  * Bar (pipeline by owner/region).
+  * Pie/Donut (lead source share).
+  * Leaderboard (top reps by won amount).
+* **Filters**: Date range, Team, Owner, Stage, Currency, Region, Product line.
+* **Drill-down**: clicking any segment opens filtered **Opportunity List**.
+
+---
+
+## 3) Component Inventory (Reusable)
+
+1. **FormInput**
+
+   * Props: `name`, `label`, `type` ('text'|'number'|'currency'|'percent'|'textarea'), `value`, `onChange`, `required`, `maxLength`, `helpText`, `error`.
+   * Behavior: debounced validation, aria-describedby for errors.
+2. **SelectAutocomplete**
+
+   * Props: `name`, `label`, `options`, `value`, `onChange`, `creatable`, `asyncLoad(query)`, `multiple`.
+   * Behavior: keyboard nav; virtualized list for large sets.
+3. **DatePicker**
+
+   * Props: `value`, `onChange`, `minDate`, `maxDate`, `disablePast`.
+   * Behavior: locale-aware, keyboard input, ARIA grid.
+4. **CurrencyInput**
+
+   * Props: `amount`, `currency`, `onAmountChange`, `onCurrencyChange`.
+   * Behavior: formats with Intl; validates ≥0.
+5. **StatusChip**
+
+   * Props: `status` ('Open'|'Won'|'Lost'), `stage`.
+   * Behavior: color-coded; tooltip with probability.
+6. **StageTimeline**
+
+   * Props: `stages[]`, `currentStageId`, `onChange(stageId)`, `disabledReasons[]`.
+   * Behavior: click to advance/rollback with confirm.
+7. **DataTable**
+
+   * Props: `columns[]`, `rows[]`, `rowId`, `sort`, `onSortChange`, `selection`, `onSelectionChange`, `pagination`, `onRowClick`, `rowActions[]`.
+   * Behavior: column pinning, resizing, virtualization.
+8. **FilterBar**
+
+   * Props: `filtersSchema`, `value`, `onChange`, `onClear`.
+   * Behavior: saves presets; query-string sync.
+9. **AttachmentUploader**
+
+   * Props: `onUpload(files)`, `maxSizeMB`, `accept[]`.
+   * Behavior: drag/drop; progress; virus-scan hook.
+10. **NotesEditor**
+
+* Props: `value`, `onSave`, `mentionsDataSource`, `attachmentsEnabled`.
+* Behavior: markdown or rich text; @mentions; autosave.
+
+11. **ActivityForm**
+
+* Props: `type` (call/email/meeting/task), `dueDate`, `assignee`, `outcome`.
+
+12. **Toast**
+
+* Props: `title`, `description`, `status` (success/error/info), `action`.
+
+13. **ConfirmDialog**
+
+* Props: `title`, `body`, `confirmText`, `onConfirm`, `danger`.
+
+14. **KPIWidget**
+
+* Props: `label`, `value`, `delta`, `help`.
+
+15. **Chart** (wrapping your lib, e.g., Recharts)
+
+* Props: `type`, `data`, `xKey`, `yKey`, `series[]`, `onClick`, `tooltip`.
+
+---
+
+## 4) Data Model
+
+### Opportunity (recommended fields)
+
+```ts
+Opportunity {
+  id: string;                        // UUID
+  externalId?: string;               // for imports
+  name: string;
+  accountId: string;
+  primaryContactId?: string;
+  ownerId: string;
+  stageId: string;                   // fk to Stage
+  status: 'Open'|'Won'|'Lost';
+  probability: number;               // 0..100
+  amount: number;                    // minor units optional if multi-currency accounting
+  currency: string;                  // 'USD', 'INR', etc.
+  expectedCloseDate: string;         // ISO date
+  leadSource?: string;
+  products?: OpportunityProduct[];   // denormalized in API
+  tags?: string[];
+  description?: string;
+  customFields?: Record<string, any>;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  closedAt?: string;
+  closedReason?: string;             // when Lost
+  wonAmount?: number;                // when Won
+}
+```
+
+### Sample JSON — Create
+
+```json
+POST /api/opportunities
+{
+  "name": "Q4 Renewal - Acme Corp",
+  "accountId": "acc_2f1a",
+  "primaryContactId": "con_92ab",
+  "ownerId": "usr_112",
+  "stageId": "stg_qual",
+  "probability": 20,
+  "amount": 25000,
+  "currency": "USD",
+  "expectedCloseDate": "2025-12-15",
+  "leadSource": "Referral",
+  "products": [
+    {"productId": "prd_routerX", "quantity": 10, "unitPrice": 2000}
+  ],
+  "tags": ["renewal","priority"],
+  "customFields": {"segment":"Enterprise","region":"NA"}
+}
+```
+
+### Sample JSON — Update (PATCH)
+
+```json
+PATCH /api/opportunities/opp_7c9a
+{
+  "stageId": "stg_proposal",
+  "probability": 60,
+  "expectedCloseDate": "2025-12-20",
+  "tags": ["renewal","vip"]
+}
+```
+
+### Sample JSON — Fetch (single)
+
+```json
+GET /api/opportunities/opp_7c9a
+{
+  "id": "opp_7c9a",
+  "name": "Q4 Renewal - Acme Corp",
+  "accountId": "acc_2f1a",
+  "account": {"id":"acc_2f1a","name":"Acme Corp"},
+  "primaryContact": {"id":"con_92ab","name":"Jane Smith","email":"jane@acme.com"},
+  "owner": {"id":"usr_112","name":"Sam Lee"},
+  "stage": {"id":"stg_proposal","name":"Proposal","defaultProbability":60, "order":3},
+  "status": "Open",
+  "probability": 60,
+  "amount": 25000,
+  "currency": "USD",
+  "expectedCloseDate": "2025-12-20",
+  "leadSource": "Referral",
+  "products": [{"productId":"prd_routerX","name":"Router X","quantity":10,"unitPrice":2000,"lineAmount":20000}],
+  "tags": ["renewal","vip"],
+  "description": "Renew 3-year contract.",
+  "customFields": {"segment":"Enterprise","region":"NA"},
+  "createdAt": "2025-08-01T10:23:00Z",
+  "createdBy":"usr_112",
+  "updatedAt":"2025-08-05T14:05:00Z",
+  "updatedBy":"usr_130"
+}
+```
+
+### Sample JSON — List with pagination
+
+```json
+GET /api/opportunities?stage=stg_qual&ownerId=usr_112&limit=25&cursor=abc123&sort=-expectedCloseDate
+{
+  "items": [ /* array of Opportunity summaries */ ],
+  "nextCursor": "def456",
+  "total": 7421
+}
+```
+
+---
+
+## 5) REST API (Primary)
+
+**Base**: `/api`
+
+### Opportunities
+
+* `GET /opportunities`
+
+  * Query params:
+
+    * `q` (search in name/account/contact), `stage`, `status`, `ownerId`, `teamId`, `accountId`, `leadSource`, `tag`, `minAmount`, `maxAmount`, `currency`, `closeDateFrom`, `closeDateTo`, `createdFrom`, `createdTo`, `updatedFrom`, `updatedTo`, `sort` (e.g., `-expectedCloseDate,amount`), `limit` (1–100), `cursor`.
+  * Response: paged list (cursor-based preferred).
+* `POST /opportunities` (create).
+* `GET /opportunities/{id}` (detail).
+* `PATCH /opportunities/{id}` (partial update).
+* `DELETE /opportunities/{id}` (perm restricted).
+
+### Stage/Status
+
+* `POST /opportunities/{id}/stage`
+  Body: `{ "stageId":"stg_demo" }` → validates criteria; returns updated opp + history entry.
+* `POST /opportunities/{id}/close`
+  Body: `{ "status":"Won", "wonAmount":26000, "closedAt":"2025-12-21" }`
+  or `{ "status":"Lost", "closedReason":"Budget", "closedAt":"2025-11-30" }`.
+
+### Ownership
+
+* `POST /opportunities/{id}/owner`
+  Body: `{ "ownerId": "usr_245" }` (permission: Manager/Admin or current owner).
+
+### Products
+
+* `PUT /opportunities/{id}/products`
+  Body: `[{ "productId":"prd_1", "quantity":2, "unitPrice":1000 }]`.
+
+### Notes
+
+* `GET /opportunities/{id}/notes`
+* `POST /opportunities/{id}/notes` `{ "body":"Met with @sam" }`
+* `PATCH /notes/{noteId}` / `DELETE /notes/{noteId}` (with audit).
+
+### Attachments
+
+* `POST /opportunities/{id}/attachments` (multipart).
+* `GET /opportunities/{id}/attachments`
+* `DELETE /attachments/{attachmentId}`.
+
+### Activities
+
+* `GET /opportunities/{id}/activities`
+* `POST /opportunities/{id}/activities`
+  `{ "type":"call"|"email"|"meeting"|"task", "subject":"...", "dueAt":"...", "assigneeId":"...", "outcome":"..." }`.
+
+### Bulk & Import/Export
+
+* `POST /opportunities/bulk/owner` `{ "ids":["opp_a","opp_b"], "ownerId":"usr_2" }`
+* `POST /opportunities/bulk/stage` `{ "ids":[...], "stageId":"stg_demo" }`
+* `POST /opportunities/import` (multipart CSV) → jobId; `GET /jobs/{jobId}`
+* `POST /opportunities/export` `{ "filters":{...}, "columns":["name","amount"] }` → file link/job
+
+### Audit & History
+
+* `GET /opportunities/{id}/history` (field changes with who/when/source).
+
+**Error format (RFC 7807-like)**
+
+```json
+{
+  "type": "https://example.com/errors/validation",
+  "title": "Validation Error",
+  "status": 400,
+  "traceId": "req_abc123",
+  "errors": {
+    "expectedCloseDate": ["Expected close date cannot be in the past"]
+  }
+}
+```
+
+**Optional GraphQL (example)**
+
+```graphql
+mutation CreateOpportunity($input: OpportunityInput!) {
+  createOpportunity(input: $input) {
+    id name stage { id name } amount currency expectedCloseDate
+  }
+}
+```
+
+---
+
+## 6) Database Schema (Minimal)
+
+```sql
+-- Users (owners)
+CREATE TABLE users (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  email CITEXT UNIQUE NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('rep','manager','admin')),
+  team_id UUID
+);
+
+CREATE TABLE accounts (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  domain TEXT,
+  billing_country TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE contacts (
+  id UUID PRIMARY KEY,
+  account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
+  first_name TEXT, last_name TEXT, email CITEXT, phone TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE stages (
+  id TEXT PRIMARY KEY,          -- e.g., 'stg_qual'
+  name TEXT NOT NULL,
+  "order" INT NOT NULL,
+  default_probability INT NOT NULL CHECK (default_probability BETWEEN 0 AND 100),
+  is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+  is_won BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE opportunities (
+  id UUID PRIMARY KEY,
+  external_id TEXT,
+  name TEXT NOT NULL,
+  account_id UUID NOT NULL REFERENCES accounts(id),
+  primary_contact_id UUID REFERENCES contacts(id),
+  owner_id UUID NOT NULL REFERENCES users(id),
+  stage_id TEXT NOT NULL REFERENCES stages(id),
+  status TEXT NOT NULL CHECK (status IN ('Open','Won','Lost')) DEFAULT 'Open',
+  probability INT NOT NULL CHECK (probability BETWEEN 0 AND 100),
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  currency CHAR(3) NOT NULL,
+  expected_close_date DATE NOT NULL,
+  lead_source TEXT,
+  description TEXT,
+  tags TEXT[] DEFAULT '{}',
+  custom_fields JSONB DEFAULT '{}'::jsonb,
+  won_amount NUMERIC(18,2),
+  closed_reason TEXT,
+  closed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID REFERENCES users(id),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  updated_by UUID REFERENCES users(id)
+);
+
+CREATE INDEX ON opportunities (owner_id);
+CREATE INDEX ON opportunities (stage_id);
+CREATE INDEX ON opportunities (expected_close_date);
+CREATE INDEX ON opportunities USING GIN (tags);
+CREATE INDEX ON opportunities USING GIN (custom_fields);
+
+CREATE TABLE opportunity_products (
+  opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+  product_id TEXT NOT NULL,
+  name TEXT,
+  quantity INT NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(18,2) NOT NULL CHECK (unit_price >= 0),
+  PRIMARY KEY (opportunity_id, product_id)
+);
+
+CREATE TABLE notes (
+  id UUID PRIMARY KEY,
+  opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+  author_id UUID REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ
+);
+
+CREATE TABLE attachments (
+  id UUID PRIMARY KEY,
+  opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  file_type TEXT,
+  size_bytes BIGINT,
+  storage_url TEXT NOT NULL,
+  uploaded_by UUID REFERENCES users(id),
+  uploaded_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE activities (
+  id UUID PRIMARY KEY,
+  opportunity_id UUID REFERENCES opportunities(id) ON DELETE CASCADE,
+  type TEXT CHECK (type IN ('call','email','meeting','task')),
+  subject TEXT NOT NULL,
+  due_at TIMESTAMPTZ,
+  assignee_id UUID REFERENCES users(id),
+  outcome TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Audit trail
+CREATE TABLE audits (
+  id UUID PRIMARY KEY,
+  entity_type TEXT NOT NULL,      -- 'opportunity', 'note', etc.
+  entity_id UUID NOT NULL,
+  action TEXT NOT NULL,           -- 'create','update','delete','stage_change','owner_change','close'
+  actor_id UUID REFERENCES users(id),
+  meta JSONB,                     -- changed fields {field:{old,new}}
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## 7) Dashboard Spec
+
+**KPIs (definitions)**
+
+* **Pipeline Value**: sum(`amount`) where `status='Open'`.
+* **# Opportunities by Stage**: count grouped by `stage_id`.
+* **Win Rate**: `wonCount / (wonCount + lostCount)` within date filter.
+* **Average Deal Size**: avg(`won_amount`) where `status='Won'`.
+* **Forecast vs Quota**: (sum of `amount * probability/100`) vs team/user quota table.
+
+**Visualizations & Interactions**
+
+* Funnel (stages ordered by `stages.order`). Hover → value + count; click → drill to filtered list.
+* Time-series (month on X, pipeline or wins on Y). Range picker: last 30/90/365/custom.
+* Bar chart by owner (stacked by stage). Click owner → filter owner.
+* Donut: leadSource share. Click slice → filter.
+* Leaderboard table: Owner, Won amount (period), Win rate.
+
+**Sample Mock Query (Postgres)**
+
+```sql
+-- Pipeline by stage
+SELECT s.name, SUM(o.amount) AS pipeline_value, COUNT(*) AS opps
+FROM opportunities o
+JOIN stages s ON s.id = o.stage_id
+WHERE o.status = 'Open' AND o.expected_close_date BETWEEN $1 AND $2
+GROUP BY s.name, s."order"
+ORDER BY s."order";
+```
+
+**Filters**
+
+* Period (dateRange on expected\_close\_date or closed\_at), Team, Owner, Stage, Currency, Region (from account or customFields), Product line.
+
+---
+
+## 8) Role-based Access Matrix
+
+| Action                         |   Sales Rep   | Manager |  Admin |
+| ------------------------------ | :-----------: | :-----: | :----: |
+| Create Opportunity             |       ✅       |    ✅    |    ✅   |
+| Edit own Opportunity           |       ✅       |    ✅    |    ✅   |
+| Edit any in team               |       ❌       |    ✅    |    ✅   |
+| Change Stage (own)             |       ✅       |    ✅    |    ✅   |
+| Change Stage (any)             |       ❌       |    ✅    |    ✅   |
+| Change Owner (within team)     |       ❌       |    ✅    |    ✅   |
+| Change Owner (any)             |       ❌       |    ❌    |    ✅   |
+| Close as Won/Lost (own)        |       ✅       |    ✅    |    ✅   |
+| Close as Won/Lost (any)        |       ❌       |    ✅    |    ✅   |
+| Delete Opportunity             |       ❌       |    ❌    |    ✅   |
+| Configure Stages/Custom Fields |       ❌       |    ❌    |    ✅   |
+| Import/Export                  | ✅(export own) | ✅(team) | ✅(all) |
+
+*(Data access rules can further restrict by territory/team.)*
+
+---
+
+## 9) Accessibility, Localization, Performance
+
+* **Accessibility**:
+
+  * All inputs with labels (`<label for>`), ARIA attributes for custom widgets (combobox, listbox, grid).
+  * Keyboard: Tab order logical; Enter/Space triggers primary action; Escape closes modals; Arrow keys in pickers; `aria-live="polite"` for toasts.
+  * Contrast ≥ 4.5:1; focus visible states; error text with `aria-describedby`.
+  * Stage timeline implemented as `role="list"` with items `role="listitem"` and `aria-current` on active stage.
+
+* **Localization**:
+
+  * Dates/times via `Intl.DateTimeFormat` (user locale).
+  * Currency via `Intl.NumberFormat` with currency code.
+  * Translation keys (i18n) for labels and messages; avoid concatenated strings.
+  * Time zones: store UTC; display user preference.
+  * Number formats (decimal/group separators) per locale.
+
+* **Performance & Scalability**:
+
+  * Use pagination + server-side filtering/sorting; table virtualization for >1k rows.
+  * Debounced search; cache list filters in URL.
+  * Lazy-load tabs (Activities, Attachments).
+  * Chunk-split by route; prefetch on hover for detail links.
+  * Optimistic UI for inline edits; reconcile on error.
+  * Background upload for attachments with resumable protocol (optional).
+
+* **Responsive breakpoints**:
+
+  * Desktop ≥ 1024px: two-column layouts; side panels.
+  * Tablet 768–1023px: single column; stacked cards.
+  * Mobile < 768px: condensed table (name, amount, stage); sticky action bar.
+
+---
+
+## 10) Example UI Code Skeletons
+
+### React — Create Opportunity (Material UI example, TypeScript-ish)
+
+```tsx
+import { useState } from "react";
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, MenuItem, Button, Grid, Autocomplete
+} from "@mui/material";
+
+export default function CreateOpportunityModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    name: "", accountId: null, primaryContactId: null,
+    ownerId: "me", stageId: "stg_qual", probability: 20,
+    amount: 0, currency: "USD", expectedCloseDate: "",
+    leadSource: "", tags: []
+  });
+  const [errors, setErrors] = useState({});
+
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const validate = () => {
+    const e:any = {};
+    if (!form.name || form.name.length < 3) e.name = "Name must be 3–150 chars";
+    if (!form.accountId) e.accountId = "Account is required";
+    if (!form.expectedCloseDate) e.expectedCloseDate = "Expected close date is required";
+    if (form.probability < 0 || form.probability > 100) e.probability = "0–100";
+    if (form.amount < 0) e.amount = "Amount must be ≥ 0";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSave = async () => {
+    if (!validate()) return;
+    const res = await fetch("/api/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    if (res.ok) { onCreated(await res.json()); onClose(); }
+    else { const err = await res.json(); setErrors(err.errors || {}); }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" aria-labelledby="new-opp-title">
+      <DialogTitle id="new-opp-title">New Opportunity</DialogTitle>
+      <DialogContent dividers>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={8}>
+            <TextField required fullWidth label="Name" value={form.name}
+              onChange={e=>set("name", e.target.value)} error={!!errors.name} helperText={errors.name}/>
+            <Autocomplete options={[]} getOptionLabel={(o)=>o.name||""}
+              onChange={(_, v)=>set("accountId", v?.id || null)}
+              renderInput={(p)=><TextField {...p} required label="Account" error={!!errors.accountId} helperText={errors.accountId}/>}/>
+            <TextField type="number" fullWidth label="Amount" value={form.amount}
+              onChange={e=>set("amount", Number(e.target.value))} error={!!errors.amount} helperText={errors.amount}/>
+            <TextField select fullWidth label="Currency" value={form.currency} onChange={e=>set("currency", e.target.value)}>
+              {["USD","INR","EUR"].map(c=><MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField select required fullWidth label="Stage" value={form.stageId} onChange={e=>set("stageId", e.target.value)}>
+              <MenuItem value="stg_qual">Qualification</MenuItem>
+              <MenuItem value="stg_demo">Demo</MenuItem>
+              <MenuItem value="stg_prop">Proposal</MenuItem>
+            </TextField>
+            <TextField type="number" fullWidth label="Probability (%)" value={form.probability}
+              onChange={e=>set("probability", Number(e.target.value))} error={!!errors.probability} helperText={errors.probability}/>
+            <TextField type="date" required fullWidth label="Expected Close"
+              InputLabelProps={{ shrink: true }} value={form.expectedCloseDate}
+              onChange={e=>set("expectedCloseDate", e.target.value)} error={!!errors.expectedCloseDate} helperText={errors.expectedCloseDate}/>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave}>Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+**Styling Notes**
+
+* Use 8px spacing scale.
+* Dense inputs on mobile (`size="small"`).
+* Status colors from semantic palette; ensure WCAG contrast.
+
+**Material UI Usage Notes**
+
+* Use `Autocomplete` with `ListboxProps={{ role:'listbox' }}` and `renderOption` for ARIA.
+* Use `Dialog` `aria-labelledby` and `aria-describedby`.
+* Prefer `sx` prop for quick layout; extract to theme for consistency.
+
+---
+
+## 11) Acceptance Criteria & Test Plan
+
+**Acceptance Criteria**
+
+1. Users with role **rep** can create/edit/advance stage on their own opportunities; cannot change other owners.
+2. Creating an opportunity enforces required fields and date/probability/amount constraints; on success user lands on Details with toast.
+3. Stage changes write an **audit** record and update probability (unless overridden by permissions).
+4. Closing Won/Lost requires respective fields and updates **status** and **closedAt**.
+5. List supports search, filter, sort, pagination; settings persist in URL.
+6. Dashboard shows KPIs and charts respecting filters and supports drill-down to List.
+7. Import validates mapping and reports per-row errors; no partial rows created.
+8. All interactive components are keyboard accessible and screen-reader friendly.
+
+**Test Plan (key cases)**
+
+* **Functional**
+
+  * Create with minimal required fields → 201 + record persists.
+  * Edit inline (amount) with optimistic UI → success & audit entry.
+  * Stage progression with unmet criteria → blocked with clear error.
+  * Close as Lost requires `closedReason`.
+  * Bulk owner change → succeeds for permitted rows, fails others with report.
+* **Validation**
+
+  * `expectedCloseDate` in past → 400.
+  * `probability` outside 0–100 → blocked.
+  * CSV import with missing `name` column → mapping error.
+* **Security**
+
+  * Rep attempts to edit other owner’s opp → 403.
+  * Rep tries to delete → 403.
+  * IDOR: access opp outside team (if rule) → 404/403.
+* **Edge Cases**
+
+  * Currency switching after amount set → displayed reformat only (no conversion unless server-enabled).
+  * Very large tag list → virtualized select; no crash.
+  * Attachment > max size → client-side rejection + server validation.
+
+---
+
+## 12) MVP vs Nice-to-have & Effort
+
+**MVP (P1)**
+
+* Create/Edit Opportunity (core fields).
+* Stage Timeline & Close Won/Lost.
+* List with search/filter/sort/pagination.
+* Attachments (basic), Notes (plain text), Activities (basic).
+* Dashboard: KPIs (Pipeline, # by Stage), simple Funnel & Owner bar, drill-down.
+* RBAC (rep/manager/admin), audit trail.
+* Import (Create only), Export (filtered).
+* Accessibility AA basics, responsive layouts.
+
+**Nice-to-have (P2/P3)**
+
+* Email sync & activity auto-capture.
+* Playbooks / stage checklists & required tasks.
+* Forecast module & quota management.
+* Advanced custom-field layouts, conditional logic.
+* Comment threads with reactions, @mentions notifications.
+* Resumable uploads; virus scanning integration.
+* GraphQL API; webhooks; Zapier connectors.
+* In-app guidance, tours, blank-state education.
+
+**Estimated Effort (MVP)**
+
+* Frontend: **45–65 person-days** (2–3 devs across 3–4 sprints).
+* Backend: **40–60 person-days** (API, auth, audit, import/export).
+* QA/Accessibility: **12–18 person-days**.
+* Design/PM: **12–16 person-days**.
+  *(Assumes existing auth/user/teams, and existing component library.)*
+
+---
+
+## 13) Example Sample Data (Small)
+
+```json
+{
+  "stages": [
+    {"id":"stg_qual","name":"Qualification","order":1,"defaultProbability":20},
+    {"id":"stg_demo","name":"Demo","order":2,"defaultProbability":40},
+    {"id":"stg_proposal","name":"Proposal","order":3,"defaultProbability":60},
+    {"id":"stg_negotiation","name":"Negotiation","order":4,"defaultProbability":80},
+    {"id":"stg_closed_won","name":"Closed Won","order":5,"defaultProbability":100,"is_won":true,"is_closed":true},
+    {"id":"stg_closed_lost","name":"Closed Lost","order":6,"defaultProbability":0,"is_closed":true}
+  ],
+  "opportunities": [
+    {"id":"opp_1","name":"Acme Corp Renewal","accountId":"acc_1","ownerId":"usr_1","stageId":"stg_demo","status":"Open","probability":40,"amount":30000,"currency":"USD","expectedCloseDate":"2025-10-15"},
+    {"id":"opp_2","name":"Globex New Logo","accountId":"acc_2","ownerId":"usr_2","stageId":"stg_proposal","status":"Open","probability":60,"amount":45000,"currency":"USD","expectedCloseDate":"2025-11-10"}
+  ]
+}
+```
+
+---
+
+## 14) Wireframe Hints (ASCII)
+
+```
+[ Opportunity Details ]
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Q4 Renewal - Acme Corp        [Open]  Qualification → Demo → Proposal    │
+│ Actions: Edit | Change Stage | Add Activity | Attach | Close Won/Lost    │
+├───────────────────────────────────────────────────────────────────────────┤
+│ Overview | Products | Activities | Notes | Attachments | History          │
+├───────────────────────────────────────────────────────────────────────────┤
+│ Account: Acme Corp   Owner: Sam Lee    Amount: $25,000  Prob: 60%         │
+│ Close: 2025-12-20    Lead Source: Referral  Tags: renewal, vip            │
+│ Next Step: Schedule demo with CTO                                         │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Final Notes for Engineering
+
+* Use **cursor pagination** for lists; include `nextCursor`.
+* Enforce **optimistic concurrency** via `If-Unmodified-Since` or `version` field to avoid overwrite races.
+* Emit **audit events** in a single place (middleware) for all mutations.
+* Define **stage entry criteria** server-side (pluggable JSON rules) and return reasons when failing.
+* Centralize **permissions** via policy functions (e.g., `canEdit(user, opp)`).
+
+If you want, I can adapt this spec to your preferred component library (e.g., MUI vs. Chakra), or produce Swagger/OpenAPI and a SQL migration file next.
+
+
+https://chatgpt.com/s/t_68af1550474c8191862840955c0d3cae
