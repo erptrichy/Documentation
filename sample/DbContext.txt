@@ -1,0 +1,29 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Parts.ImportTargets.Data.Models;
+using Parts.ImportTargets.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Parts.ImportTargets.Data
+{
+    public class PartsSearchDataDBContext : DbContext
+    {
+        public PartsSearchDataDBContext(DbContextOptions<PartsSearchDataDBContext> options) : base(options) { }
+
+        public DbSet<PartsSearchPanelMaster> PartsSearchPanelMaster { get; set; }
+        public DbSet<PartsSearchPanelDetail> ArayFinderPanelDet { get; set; }
+
+        public DbSet<PartsSearchCsvFileHeader> PartsSearchCsvFileHeader { get; set; }
+
+        public DbSet<PartsSearchDataUpload> PartsSearchDatas { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.HasDefaultSchema("PartsSearch");
+            base.OnModelCreating(modelBuilder);
+        }
+    }
+}

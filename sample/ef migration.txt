@@ -1,0 +1,2 @@
+dotnet ef migrations --context PartsSearchDataDBContext --project "D:\PAS\PASUP\PartsSearch.Data\Parts.PartsSearch.Data.csproj"  --startup-project "D:\PAS\PASUP\PartsSearch\Parts.PartsSearch.UPL.csproj"
+dotnet ef database update --context PartsSearchDataDbContext --project "D:\PAS\PASUP\PartsSearch.Data\Parts.PartsSearch.Data.csproj" --startup-project "D:\PAS\PASUP\PartsSearch\Parts.PartsSearch.UPL.csproj" --verbose

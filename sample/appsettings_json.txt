@@ -1,0 +1,6 @@
+{
+    "Config": {
+        "PartsDatabase": "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=admin123;Timeout=900;CommandTimeout=900;Application Name=importtargets",
+        "BatchSize": 50000
+    }
+}

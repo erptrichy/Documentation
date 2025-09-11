@@ -1,0 +1,35 @@
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Parts.ImportTargets.Entities
+{
+    public class PartsSearchPanelDetail
+    {
+        [Key]
+        public long Id { get; set; }
+
+        [Column(TypeName = "VARCHAR")]
+        [StringLength(50)]
+        public string? LocsName { get; set; }
+
+        [Column(TypeName = "VARCHAR")]
+        [StringLength(50)]
+        public string Coordinate { get; set; }
+
+        [Column(TypeName = "VARCHAR")]
+        [StringLength(15)]
+        public string? Chromosome { get; set; }
+
+        [Column(TypeName = "VARCHAR")]
+        [StringLength(10)]
+        public string? GenomeBuild { get; set; }
+
+        [Column(TypeName = "VARCHAR")]
+        [StringLength(100)]
+        public string? PanelName { get; set; }
+    }
+}

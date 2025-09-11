@@ -1,0 +1,34 @@
+using System;
+using System.IO;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
+
+namespace Parts.ImportTargets.Data  
+{
+    public class DesignTime_PartsSearchDataDBContextFactory : IDesignTimeDbContextFactory<PartsSearchDataDBContext>
+    {
+        public PartsSearchDataDBContext CreateDbContext(string[] args)
+        {
+            var basePath = Directory.GetCurrentDirectory();
+
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(basePath)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+                .AddEnvironmentVariables()
+                .Build();
+
+            var conn = Environment.GetEnvironmentVariable("Config__AFDatabase")
+                       ?? configuration.GetSection("Config")?["AFDatabase"];
+
+            if (string.IsNullOrEmpty(conn))
+                throw new InvalidOperationException(
+                    "Connection string not found. Set environment variable 'Config__AFDatabase' or add Config:AFDatabase to appsettings.json.");
+
+            var optionsBuilder = new DbContextOptionsBuilder<PartsSearchDataDBContext>();
+            optionsBuilder.UseNpgsql(conn);
+
+            return new PartsSearchDataDBContext(optionsBuilder.Options);
+        }
+    }
+}
